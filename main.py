@@ -45,7 +45,59 @@ class SearchRequest(BaseModel):
 def health_check():
     """Keep-alive endpoint for Render"""
     return {"status": "online", "engine": "Google-Native RAG"}
+    
+@app.get("/movies")
+def get_movies(page: int = Query(1, ge=1), limit: int = Query(24, ge=1, le=1000)):
+    """
+    Reads directly from the committed SQLite file.
+    Fast, efficient, and persistent.
+    """
+    offset = (page - 1) * limit
+    
+    if not os.path.exists(DB_PATH):
+        raise HTTPException(status_code=500, detail="Database file not found on server.")
 
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            
+            # Fetch Data
+            cursor = conn.execute(
+                "SELECT * FROM movies ORDER BY score DESC LIMIT ? OFFSET ?", 
+                (limit, offset)
+            )
+            rows = cursor.fetchall()
+            
+            # Format URLs for frontend
+            results = []
+            for row in rows:
+                m = dict(row)
+                # Helper for image URL
+                if m['poster_path'] and str(m['poster_path']).lower() != 'nan':
+                    m['poster_url'] = f"https://image.tmdb.org/t/p/w500{m['poster_path']}"
+                else:
+                    m['poster_url'] = None
+                
+                # Cleanup raw DB keys if necessary
+                del m['poster_path'] 
+                results.append(m)
+
+            # Optional: Get Total Count (Cached query for speed if possible)
+            total = conn.execute("SELECT COUNT(*) FROM movies").fetchone()[0]
+
+        return {
+            "data": results,
+            "meta": {
+                "current_page": page,
+                "limit": limit,
+                "total_items": total,
+                "total_pages": (total + limit - 1) // limit
+            }
+        }
+
+    except Exception as e:
+        print(f"DB Error: {e}")
+        raise HTTPException(status_code=500, detail="Database Read Error")
 @app.post("/search")
 async def search_movies(req: SearchRequest):
     try:
