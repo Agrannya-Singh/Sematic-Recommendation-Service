@@ -28,7 +28,7 @@ if not PINECONE_KEY or not GEMINI_KEY:
 # --- SERVICE SETUP ---
 # 1. Pinecone (Vector Database)
 pc = Pinecone(api_key=PINECONE_KEY)
-index_name = "screenscout-production-v1" 
+index_name = "screenscout-google-v1" 
 index = pc.Index(index_name)
 
 # 2. Google Gemini (The Brain)
