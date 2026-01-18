@@ -1,0 +1,7 @@
+fastapi==0.109.0
+uvicorn==0.27.0 
+pinecone-client==3.1.0 #VectorDB driver
+sentence-transformers==2.3.1
+google-generativeai==0.3.2 #for flash 1.5 acting as the retirval agent
+pydantic==2.6.0
+python-multipart
