@@ -7,8 +7,7 @@ from tqdm import tqdm
 
 # --- CONFIG ---
 # --- KEYS ---
-PINECONE_KEY = "pcsk_5nc2fw_3Acq6qYtpeFWU9UG6hHHrG6js6bs5ow714U4tNuUSMvfDFF88c1iuSJoGjxf4vV"
-GEMINI_KEY = "AIzaSyAr6XmfwbcBlt47L-mxRepFG0JYC9lXoVA" 
+#add pinecone and gemini key here to work :)
 INDEX_NAME = "screenscout-google-v1"
 
 # 1. Setup Services
