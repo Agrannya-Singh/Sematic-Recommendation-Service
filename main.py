@@ -53,7 +53,7 @@ async def search_movies(req: SearchRequest):
         # We use the same model as ingestion, but with 'retrieval_query' task type
         # to optimize the vector for searching.
         emb_response = genai.embed_content(
-            model="models/text-embedding-005",
+            model="models/text-embedding-004",
             content=req.query,
             task_type="retrieval_query"
         )
