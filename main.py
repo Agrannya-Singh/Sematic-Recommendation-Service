@@ -106,7 +106,7 @@ async def search_movies(req: SearchRequest):
         Act as a witty, knowledgeable movie critic. 
         Select the ONE best movie from this list that fits the user's query perfectly.
         Write a short, engaging 2-sentence recommendation explaining WHY it's the right choice.
-        Do not list all movies. Just pick the winner.
+        Just pick the winner.also list 10-15 more movies
         """
         
         analysis = chat_model.generate_content(prompt).text
