@@ -11,17 +11,15 @@ The application process was killed by the kernel for exceeding the 512MB memory 
 ## 2. Root Cause Analysis
 Investigating the code revealed two main contributors:
 
-### A. Excessive HTTP Client Creation (Primary Cause)
-The `/movies` endpoint fetches 1000 movies from SQLite and then enriches them *concurrently* with data from OMDB.
-The original code in `main.py` was:
-```python
-async def enrich_movie(row):
-    # ...
-    async with httpx.AsyncClient() as client: # <--- NEW CLIENT PER MOVIE
-        await client.get(...)
-```
-With `limit=1000` (default), this spawned **1000 concurrent `httpx.AsyncClient` instances**.
-Each client maintains its own connection pool, SSL context, and buffers. This massive overhead easily exceeded the 512MB RAM limit.
+### A. Design Flaw: Unnecessary External API Calls (Primary Cause)
+The `/movies` endpoint was incorrectly implemented to call the OMDB API for *every single movie* in the list (default limit 1000). The SQLite database already contains the necessary display data (title, genre, poster).
+Calling OMDB for 1000 items concurrently caused:
+1.  **Network Saturation / OOM:** Creating 1000 SSL connections.
+2.  **API Rate Limiting:** Flooding the external provider.
+
+**Correct Logic:**
+-   `/movies` (Homepage): Serve purely from local SQLite. Fast, low memory.
+-   `/recommend` (AI): Enhance the small result set (top 15-20) with OMDB data if needed.
 
 ### B. Unused Heavy Dependency (Secondary Cause)
 The `requirements.txt` included `sentence-transformers`. Although the code had already migrated to Google Gemini Embeddings (API-based), this heavy library (PyTorch based) was still being installed. While Python imports are lazy, its presence in the container bloats the image size significantly (~500MB+ for PyTorch) and risks importing heavy shared libraries.
@@ -29,12 +27,7 @@ The `requirements.txt` included `sentence-transformers`. Although the code had a
 ## 3. Resolution
 We have applied the following fixes:
 
-1.  **Shared HTTP Client:** Refactored `main.py` to create a *single* `httpx.AsyncClient` context manager per request and pass it to all concurrent enrichment tasks.
-    ```python
-    async with httpx.AsyncClient() as client:
-        results = await asyncio.gather(*(enrich_movie(client, row) for row in rows))
-    ```
-    This reduces overhead from 1000 clients to 1 client, drastically reducing memory footprint.
+1.  **Logic Logic Correction:** Modified `main.py` -> `get_movies` to solely read from the local SQLite database. Removed the concurrent OMDB enrichment loop entirely from this endpoint. This reduces external network calls from 1000 to 0 for the homepage.
 
 2.  **Dependency Cleanup:** Removed `sentence-transformers` from `requirements.txt`.
 

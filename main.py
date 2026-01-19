@@ -123,27 +123,13 @@ async def get_movies(page: int = Query(1, ge=1), limit: int = Query(1000, ge=1, 
         
         rows, total = await asyncio.to_thread(read_db)
         
-        # Prepare for async OMDB fetching
-        async def enrich_movie(client, row):
+        # Map DB rows to response format directly
+        results = []
+        for row in rows:
             m = secure_poster_url(dict(row))
             if 'vote_average' in m:
                 m['score'] = m['vote_average']
-            
-            # Fetch OMDB data concurrently
-            title = m.get('title')
-            omdb_data = await fetch_omdb_metadata(client, title)
-            
-            # Enrich
-            if omdb_data:
-                m['poster_url'] = omdb_data.get('poster_url') or m.get('poster_url')
-                m['year'] = omdb_data.get('year')
-                m['imdb_rating'] = omdb_data.get('rating')
-            
-            return m
-
-        # Execute enrichment concurrently
-        async with httpx.AsyncClient() as client:
-            results = await asyncio.gather(*(enrich_movie(client, row) for row in rows))
+            results.append(m)
 
         return {
             "data": results,
