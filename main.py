@@ -191,9 +191,16 @@ async def recommend_movies(req: RecommendationRequest):
         # 5. PREPARE AI CONTEXT (TOP 20 for AI to pick from, excluding selected)
         context_text = ""
         
-        # Filter out movies the user already selected
+        # Filter out movies the user already selected AND duplicates from Pinecone
         input_ids = set(req.selected_movie_ids)
-        candidates = [m for m in results['matches'] if m['id'] not in input_ids]
+        seen_ids = set()
+        candidates = []
+        
+        for m in results['matches']:
+            mid = m['id']
+            if mid not in input_ids and mid not in seen_ids:
+                candidates.append(m)
+                seen_ids.add(mid)
         
         # Take Top 20 from refined list
         candidates = candidates[:20]

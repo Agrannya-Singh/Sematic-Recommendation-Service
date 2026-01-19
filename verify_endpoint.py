@@ -9,11 +9,7 @@ sys.path.append(os.getcwd())
 from main import app
 from starlette.testclient import TestClient
 
-# Fallback to requests if TestClient fails, but TestClient needs httpx.
-# If httpx is missing, we can't use TestClient easily.
-# However, I installed httpx. It might be a path issue.
-# I will try to use the 'requests' library if available or standard urllib to hit the running server if I can start one?
-# No, easier: I will just simulate the async function call directly.
+
 
 from main import get_movies
 
