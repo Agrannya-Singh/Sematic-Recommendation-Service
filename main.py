@@ -99,27 +99,46 @@ def health_check():
     return {"status": "online", "mode": "Secure Production"}
 
 @app.get("/movies")
-def get_movies(page: int = Query(1, ge=1), limit: int = Query(1000, ge=1, le=2000)):
+async def get_movies(page: int = Query(1, ge=1), limit: int = Query(1000, ge=1, le=2000)):
     """Reads directly from the movies.db file for the homepage."""
     offset = (page - 1) * limit
     if not os.path.exists(DB_PATH):
         return {"data": [], "error": "Database file not found."}
 
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.execute("SELECT * FROM movies ORDER BY vote_average DESC LIMIT ? OFFSET ?", (limit, offset))
-            rows = cursor.fetchall()
+        # Use asyncio.to_thread for blocking DB call to avoid blocking the event loop
+        # Although sqlite3 is fast, for high concurrency or long queries it's better.
+        # But here valid for logic separation.
+        def read_db():
+            with sqlite3.connect(DB_PATH) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("SELECT * FROM movies ORDER BY vote_average DESC LIMIT ? OFFSET ?", (limit, offset))
+                rows = cursor.fetchall()
+                total = conn.execute("SELECT COUNT(*) FROM movies").fetchone()[0]
+                return rows, total
+        
+        rows, total = await asyncio.to_thread(read_db)
+        
+        # Prepare for async OMDB fetching
+        async def enrich_movie(row):
+            m = secure_poster_url(dict(row))
+            if 'vote_average' in m:
+                m['score'] = m['vote_average']
             
-            results = []
-            for row in rows:
-                m = secure_poster_url(dict(row))
-                # Map DB column 'vote_average' to API field 'score'
-                if 'vote_average' in m:
-                    m['score'] = m['vote_average']
-                results.append(m)
+            # Fetch OMDB data concurrently
+            title = m.get('title')
+            omdb_data = await fetch_omdb_metadata(title)
+            
+            # Enrich
+            if omdb_data:
+                m['poster_url'] = omdb_data.get('poster_url') or m.get('poster_url')
+                m['year'] = omdb_data.get('year')
+                m['imdb_rating'] = omdb_data.get('rating')
+            
+            return m
 
-            total = conn.execute("SELECT COUNT(*) FROM movies").fetchone()[0]
+        # Execute enrichment concurrently
+        results = await asyncio.gather(*(enrich_movie(row) for row in rows))
 
         return {
             "data": results,
@@ -132,6 +151,7 @@ def get_movies(page: int = Query(1, ge=1), limit: int = Query(1000, ge=1, le=200
         }
     except Exception as e:
         print(f"DB Error: {e}")
+        # traceback.print_exc() # detailed logs if needed
         raise HTTPException(status_code=500, detail="Database Read Error")
 
 @app.post("/recommend")
@@ -146,7 +166,7 @@ async def recommend_movies(req: RecommendationRequest):
         # 2. EMBED (STRICTLY MODEL 004)
         try:
             emb_response = genai.embed_content(
-                model="models/text-embedding-004", # ✅ Correct Model
+                model="models/text-embedding-004", # Correct Model
                 content=augmented_query,
                 task_type="retrieval_query"
             )
@@ -158,7 +178,7 @@ async def recommend_movies(req: RecommendationRequest):
         try:
             results = index.query(
                 vector=query_vec, 
-                top_k=40, # High fetch for better filtering
+                top_k=50, # Higher fetch to allow filtering
                 include_metadata=True
             )
         except Exception as pinecone_err:
@@ -168,9 +188,17 @@ async def recommend_movies(req: RecommendationRequest):
         if not results['matches']:
              return {"ai_reasoning": "I couldn't find any matches in the database. Try a broader search.", "movies": []}
 
-        # 5. PREPARE AI CONTEXT
+        # 5. PREPARE AI CONTEXT (TOP 20 for AI to pick from, excluding selected)
         context_text = ""
-        for match in results['matches']:
+        
+        # Filter out movies the user already selected
+        input_ids = set(req.selected_movie_ids)
+        candidates = [m for m in results['matches'] if m['id'] not in input_ids]
+        
+        # Take Top 20 from refined list
+        candidates = candidates[:20]
+        
+        for match in candidates:
             m = match['metadata']
             context_text += f"ID: {match['id']} | Title: {m.get('title')} | Overview: {m.get('overview')}\n"
 
@@ -182,10 +210,17 @@ async def recommend_movies(req: RecommendationRequest):
         Candidates:
         {context_text}
         
-        Pick top 5. Return JSON:
+        Task:
+        1. Select the Top 15 movies that best match the user's query and taste.
+        2. Provide a specific, unique reason for why THIS user would like EACH movie. Do not use generic descriptions like "A great movie". Use the context of the user's query and likes.
+        
+        Return JSON:
         {{
-            "reasoning": "Short explanation",
-            "movie_ids": ["id1", "id2"]
+            "movie_ids": ["id1", "id2", ...],
+            "reasoning": {{
+                "id1": "Custom reason 1...",
+                "id2": "Custom reason 2..."
+            }}
         }}
         """
         
@@ -197,41 +232,63 @@ async def recommend_movies(req: RecommendationRequest):
              print(f" AI Brain Freeze: {ai_err}")
              # Graceful Fallback
              ai_data = {
-                 "reasoning": "Here are the most relevant movies from our database.",
-                 "movie_ids": [m['id'] for m in results['matches'][:5]]
+                 "movie_ids": [m['id'] for m in candidates[:10]],
+                 "reasoning": "Here are the most relevant movies from our database." 
+                 # Note: reasoning is a string here in fallback, but dict in success. Frontend handles? 
+                 # Let's align structure. If frontend expects generic string, we might need a change.
+                 # Assuming we send per-movie reasoning, let's keep it dict or handle it.
+                 # For now, fallback returns generic string for 'ai_reasoning' key in response if global.
+                 # But we changed the prompt to return a dict of reasonings.
+                 # Let's adjust response construction below.
              }
 
         # 7. ASSEMBLE RESPONSE
         final_movies = []
         target_ids = ai_data.get("movie_ids", [])
-        if not target_ids: target_ids = [m['id'] for m in results['matches'][:5]]
+        if not target_ids: target_ids = [m['id'] for m in candidates[:10]]
+        
+        ai_reasonings = ai_data.get("reasoning", {})
+        
+        # Async enrichment for recommendations
+        async def process_recommendation(match):
+            m = match['metadata']
+            title = m.get('title')
+            
+            # Enrich with OMDB metadata
+            omdb_data = await fetch_omdb_metadata(title)
+            
+            # Update poster logic with OMDB fallback
+            movie_dict = {
+                "poster_path": omdb_data.get("poster_url") or m.get('poster_path')
+            }
+            movie_dict = secure_poster_url(movie_dict)
+            
+            # Get reasoning
+            reasoning = ""
+            if isinstance(ai_reasonings, dict):
+                reasoning = ai_reasonings.get(match['id'], "Recommended based on your preferences.")
+            else:
+                reasoning = str(ai_reasonings)
 
-        for match in results['matches']:
-            if match['id'] in target_ids:
-                m = match['metadata']
-                title = m.get('title')
-                
-                # Enrich with OMDB metadata
-                omdb_data = await fetch_omdb_metadata(title)
-                
-                # Update poster logic with OMDB fallback
-                movie_dict = {
-                    "poster_path": omdb_data.get("poster_url") or m.get('poster_path')
-                }
-                movie_dict = secure_poster_url(movie_dict)
+            return {
+                "id": match['id'],
+                "title": title,
+                "overview": m.get('overview'),
+                "poster_url": movie_dict.get("poster_url"),
+                "score": match['score'],
+                "year": omdb_data.get("year"),
+                "imdb_rating": omdb_data.get("rating"),
+                "reasoning": reasoning
+            }
 
-                final_movies.append({
-                    "id": match['id'],
-                    "title": title,
-                    "overview": m.get('overview'),
-                    "poster_url": movie_dict.get("poster_url"),
-                    "score": match['score'],
-                    "year": omdb_data.get("year"),
-                    "imdb_rating": omdb_data.get("rating")
-                })
+        # We need to filter results based on target_ids first
+        selected_matches = [m for m in results['matches'] if m['id'] in target_ids]
+        
+        # Execute concurrently
+        final_movies = await asyncio.gather(*(process_recommendation(m) for m in selected_matches))
         
         return {
-            "ai_reasoning": ai_data.get("reasoning"),
+            "ai_reasoning": "Here are my top selections for you.", # Global context
             "movies": final_movies
         }
 
