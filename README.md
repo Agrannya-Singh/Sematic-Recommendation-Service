@@ -184,13 +184,10 @@ The ingestion process (handled by `ingest.py`) transforms raw unstructured text 
 
 1. **Preprocessing:** Concatenation of Movie Title + Overview + Keywords.
 2. **Tokenization:** Text is tokenized using the WordPiece algorithm.
-3. **Embedding:** The `all-MiniLM-L6-v2` transformer outputs a 384-dimensional dense vector.
+3. **Embedding:** The `all-MiniLM-L6-v2` transformer outputs a 768-dimensional dense vector.
 4. **Indexing:** Vectors are stored in Pinecone using **Cosine Similarity** metric.
 
-### **Inference Latency Optimization**
 
-* **Cold Start:** ~2.5s (due to Serverless container spin-up).
-* **Warm State:** **<300ms** (Vector Search: ~40ms, RAG Generation: ~250ms).
 
 ---
 
