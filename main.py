@@ -51,7 +51,7 @@ try:
     if GEMINI_KEY:
         genai.configure(api_key=GEMINI_KEY)
         # Using gemini-1.5-flash-latest for better compatibility
-        chat_model = genai.GenerativeModel('gemini-1.5-flash')
+        chat_model = genai.GenerativeModel('gemini-1.5-flash-latest')
         logger.info("Connected to Gemini (1.5-flash).")
 
 except Exception as e:
