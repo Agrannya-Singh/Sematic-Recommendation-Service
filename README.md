@@ -71,6 +71,8 @@ graph TD
 
 ## API Documentation
 
+### Base URL: `https://semantic-recommendation-service.onrender.com`
+
 ### **1. Semantic Recommendation (RAG)**
 
 Performs vector retrieval and orchestrates the AI explanation.

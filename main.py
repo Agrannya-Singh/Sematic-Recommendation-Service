@@ -176,7 +176,7 @@ async def recommend_movies(req: RecommendationRequest):
             import json
             ai_data = json.loads(response.text)
         except Exception as ai_err:
-             print(f"⚠️ AI Brain Freeze: {ai_err}")
+             print(f" AI Brain Freeze: {ai_err}")
              # Graceful Fallback
              ai_data = {
                  "reasoning": "Here are the most relevant movies from our database.",
