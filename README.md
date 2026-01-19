@@ -5,6 +5,8 @@
 ![Vector DB](https://img.shields.io/badge/Vector%20DB-Pinecone-green)
 ![LLM](https://img.shields.io/badge/LLM-Gemini%201.5%20Flash-orange)
 
+frontend on:https://cinema-rag.vercel.app/
+
 ## Summary
 ScreenScout is a **cloud-native, semantic movie discovery engine** that moves beyond traditional keyword matching. Unlike standard collaborative filtering systems (which fail with cold-start users), ScreenScout utilizes **high-dimensional vector embeddings** to understand the *thematic essence* of a user's query.
 
