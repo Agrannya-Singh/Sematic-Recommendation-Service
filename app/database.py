@@ -30,15 +30,18 @@ def get_titles_from_ids(movie_ids: List[str]):
         return []
 
 def secure_poster_url(m: dict) -> dict:
-    """Standardizes poster URL handling."""
-    raw_path = str(m.get('poster_path', ''))
-    if raw_path and raw_path.lower() != 'nan':
+    """Standardizes poster URL handling for both TMDB paths and full URLs."""
+    raw_path = str(m.get('poster_path', '') or m.get('poster_url', ''))
+    
+    if raw_path and raw_path.lower() != 'nan' and raw_path.strip():
+        raw_path = raw_path.strip()
         if raw_path.startswith('http'): 
             m['poster_url'] = raw_path
-        elif not raw_path.startswith('/'): 
-            m['poster_url'] = f"https://image.tmdb.org/t/p/w500/{raw_path}"
-        else: 
+        elif raw_path.startswith('/'): 
             m['poster_url'] = f"https://image.tmdb.org/t/p/w500{raw_path}"
+        else: 
+            # Handle cases where it might be a relative path without leading slash
+            m['poster_url'] = f"https://image.tmdb.org/t/p/w500/{raw_path}"
     else:
         m['poster_url'] = None
     

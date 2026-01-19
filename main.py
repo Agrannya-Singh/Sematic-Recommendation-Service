@@ -7,6 +7,9 @@ import os
 import sqlite3
 from typing import List, Optional
 import traceback 
+import httpx
+import asyncio
+from app.database import secure_poster_url
 
 # --- APP CONFIGURATION ---
 app = FastAPI(title="ScreenScout Intelligence Engine", version="PRODUCTION")
@@ -23,6 +26,7 @@ app.add_middleware(
 # We read strictly from the Environment.
 PINECONE_KEY = os.getenv("PINECONE_KEY")
 GEMINI_KEY = os.getenv("GEMINI_KEY")
+OMDB_API_KEY = os.getenv("OMDB_API_KEY") # 🔑 Get this from environment
 
 # Database Path
 DB_PATH = os.path.join(os.path.dirname(__file__), "movies.db")
@@ -67,6 +71,27 @@ def get_titles_from_ids(movie_ids: List[str]):
         print(f"SQLite Error: {e}")
         return []
 
+async def fetch_omdb_metadata(title: str) -> dict:
+    """Fetches the latest movie metadata (like high-res posters) from OMDB."""
+    if not OMDB_API_KEY:
+        return {}
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            url = f"http://www.omdbapi.com/?t={title}&apikey={OMDB_API_KEY}"
+            response = await client.get(url, timeout=5.0)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("Response") == "True":
+                    return {
+                        "poster_url": data.get("Poster"),
+                        "year": data.get("Year"),
+                        "rating": data.get("imdbRating")
+                    }
+    except Exception as e:
+        print(f"⚠️ OMDB Error for '{title}': {e}")
+    return {}
+
 # --- ENDPOINTS ---
 
 @app.get("/")
@@ -74,7 +99,7 @@ def health_check():
     return {"status": "online", "mode": "Secure Production"}
 
 @app.get("/movies")
-def get_movies(page: int = Query(1, ge=1), limit: int = Query(24, ge=1, le=2000)):
+def get_movies(page: int = Query(1, ge=1), limit: int = Query(1000, ge=1, le=2000)):
     """Reads directly from the movies.db file for the homepage."""
     offset = (page - 1) * limit
     if not os.path.exists(DB_PATH):
@@ -88,17 +113,10 @@ def get_movies(page: int = Query(1, ge=1), limit: int = Query(24, ge=1, le=2000)
             
             results = []
             for row in rows:
-                m = dict(row)
+                m = secure_poster_url(dict(row))
                 # Map DB column 'vote_average' to API field 'score'
                 if 'vote_average' in m:
                     m['score'] = m['vote_average']
-                
-                # Secure Poster Handling
-                if m['poster_path'] and str(m['poster_path']).lower() != 'nan':
-                    m['poster_url'] = f"https://image.tmdb.org/t/p/w500{m['poster_path']}"
-                else:
-                    m['poster_url'] = None
-                if 'poster_path' in m: del m['poster_path'] 
                 results.append(m)
 
             total = conn.execute("SELECT COUNT(*) FROM movies").fetchone()[0]
@@ -191,21 +209,25 @@ async def recommend_movies(req: RecommendationRequest):
         for match in results['matches']:
             if match['id'] in target_ids:
                 m = match['metadata']
-                # Robust Poster Logic
-                raw_path = str(m.get('poster_path', ''))
-                if raw_path and raw_path.lower() != 'nan':
-                    if raw_path.startswith('http'): poster_url = raw_path
-                    elif not raw_path.startswith('/'): poster_url = f"https://image.tmdb.org/t/p/w500/{raw_path}"
-                    else: poster_url = f"https://image.tmdb.org/t/p/w500{raw_path}"
-                else:
-                    poster_url = None
+                title = m.get('title')
+                
+                # Enrich with OMDB metadata
+                omdb_data = await fetch_omdb_metadata(title)
+                
+                # Update poster logic with OMDB fallback
+                movie_dict = {
+                    "poster_path": omdb_data.get("poster_url") or m.get('poster_path')
+                }
+                movie_dict = secure_poster_url(movie_dict)
 
                 final_movies.append({
                     "id": match['id'],
-                    "title": m.get('title'),
+                    "title": title,
                     "overview": m.get('overview'),
-                    "poster_url": poster_url,
-                    "score": match['score']
+                    "poster_url": movie_dict.get("poster_url"),
+                    "score": match['score'],
+                    "year": omdb_data.get("year"),
+                    "imdb_rating": omdb_data.get("rating")
                 })
         
         return {
