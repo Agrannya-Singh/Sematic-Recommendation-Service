@@ -22,34 +22,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 🔒 SECURE CREDENTIALS ---
-# We read strictly from the Environment.
+# --- SECURE CREDENTIALS ---
+# Credentials are retrieved from the environment variables.
 PINECONE_KEY = os.getenv("PINECONE_KEY")
 GEMINI_KEY = os.getenv("GEMINI_KEY")
-OMDB_API_KEY = os.getenv("OMDB_API_KEY") # 🔑 Get this from environment
+OMDB_API_KEY = os.getenv("OMDB_API_KEY")
 
 # Database Path
 DB_PATH = os.path.join(os.path.dirname(__file__), "movies.db")
 
 # --- SERVICE INITIALIZATION ---
 if not PINECONE_KEY:
-    print("❌ CRITICAL: PINECONE_KEY not found in Environment Variables!")
+    print("CRITICAL: PINECONE_KEY not found in Environment Variables!")
 if not GEMINI_KEY:
-    print("❌ CRITICAL: GEMINI_KEY not found in Environment Variables!")
+    print("CRITICAL: GEMINI_KEY not found in Environment Variables!")
 
 try:
     if PINECONE_KEY:
         pc = Pinecone(api_key=PINECONE_KEY)
         index = pc.Index("screenscout-google-v1") 
-        print("✅ Connected to Pinecone.")
+        print("Connected to Pinecone.")
     
     if GEMINI_KEY:
         genai.configure(api_key=GEMINI_KEY)
         chat_model = genai.GenerativeModel('gemini-1.5-flash')
-        print("✅ Connected to Gemini.")
+        print("Connected to Gemini.")
 
 except Exception as e:
-    print(f"❌ Startup Error: {e}")
+    print(f"Startup Error: {e}")
 
 # --- DATA MODELS ---
 class RecommendationRequest(BaseModel):
@@ -71,16 +71,15 @@ def get_titles_from_ids(movie_ids: List[str]):
         print(f"SQLite Error: {e}")
         return []
 
-async def fetch_omdb_metadata(title: str) -> dict:
+async def fetch_omdb_metadata(client: httpx.AsyncClient, title: str) -> dict:
     """Fetches the latest movie metadata (like high-res posters) from OMDB."""
     if not OMDB_API_KEY:
         return {}
     
     try:
-        async with httpx.AsyncClient() as client:
-            url = f"http://www.omdbapi.com/?t={title}&apikey={OMDB_API_KEY}"
-            response = await client.get(url, timeout=5.0)
-            if response.status_code == 200:
+        url = f"http://www.omdbapi.com/?t={title}&apikey={OMDB_API_KEY}"
+        response = await client.get(url, timeout=5.0)
+        if response.status_code == 200:
                 data = response.json()
                 if data.get("Response") == "True":
                     return {
@@ -89,7 +88,7 @@ async def fetch_omdb_metadata(title: str) -> dict:
                         "rating": data.get("imdbRating")
                     }
     except Exception as e:
-        print(f"⚠️ OMDB Error for '{title}': {e}")
+        print(f"OMDB Error for '{title}': {e}")
     return {}
 
 # --- ENDPOINTS ---
@@ -120,14 +119,14 @@ async def get_movies(page: int = Query(1, ge=1), limit: int = Query(1000, ge=1, 
         rows, total = await asyncio.to_thread(read_db)
         
         # Prepare for async OMDB fetching
-        async def enrich_movie(row):
+        async def enrich_movie(client, row):
             m = secure_poster_url(dict(row))
             if 'vote_average' in m:
                 m['score'] = m['vote_average']
             
             # Fetch OMDB data concurrently
             title = m.get('title')
-            omdb_data = await fetch_omdb_metadata(title)
+            omdb_data = await fetch_omdb_metadata(client, title)
             
             # Enrich
             if omdb_data:
@@ -138,7 +137,8 @@ async def get_movies(page: int = Query(1, ge=1), limit: int = Query(1000, ge=1, 
             return m
 
         # Execute enrichment concurrently
-        results = await asyncio.gather(*(enrich_movie(row) for row in rows))
+        async with httpx.AsyncClient() as client:
+            results = await asyncio.gather(*(enrich_movie(client, row) for row in rows))
 
         return {
             "data": results,
@@ -161,7 +161,7 @@ async def recommend_movies(req: RecommendationRequest):
         selected_titles = get_titles_from_ids(req.selected_movie_ids)
         augmented_query = f"Movies similar to {', '.join(selected_titles)}. Context: {req.query}" if selected_titles else req.query
 
-        print(f"🔎 DEBUG: Embedding Query with 004 -> {augmented_query[:50]}...")
+        print(f"DEBUG: Embedding Query with 004 -> {augmented_query[:50]}...")
 
         # 2. EMBED (STRICTLY MODEL 004)
         try:
@@ -236,7 +236,7 @@ async def recommend_movies(req: RecommendationRequest):
             import json
             ai_data = json.loads(response.text)
         except Exception as ai_err:
-             print(f" AI Brain Freeze: {ai_err}")
+             print(f"AI Generation Error: {ai_err}")
              # Graceful Fallback
              ai_data = {
                  "movie_ids": [m['id'] for m in candidates[:10]],
@@ -257,12 +257,12 @@ async def recommend_movies(req: RecommendationRequest):
         ai_reasonings = ai_data.get("reasoning", {})
         
         # Async enrichment for recommendations
-        async def process_recommendation(match):
+        async def process_recommendation(client, match):
             m = match['metadata']
             title = m.get('title')
             
             # Enrich with OMDB metadata
-            omdb_data = await fetch_omdb_metadata(title)
+            omdb_data = await fetch_omdb_metadata(client, title)
             
             # Update poster logic with OMDB fallback
             movie_dict = {
@@ -292,7 +292,8 @@ async def recommend_movies(req: RecommendationRequest):
         selected_matches = [m for m in results['matches'] if m['id'] in target_ids]
         
         # Execute concurrently
-        final_movies = await asyncio.gather(*(process_recommendation(m) for m in selected_matches))
+        async with httpx.AsyncClient() as client:
+            final_movies = await asyncio.gather(*(process_recommendation(client, m) for m in selected_matches))
         
         return {
             "ai_reasoning": "Here are my top selections for you.", # Global context

@@ -32,7 +32,8 @@ class RecommendationService:
             # 1. SETUP
             selected_titles = get_titles_from_ids(req.selected_movie_ids)
             augmented_query = f"Movies similar to {', '.join(selected_titles)}. Context: {req.query}" if selected_titles else req.query
-            print(f" DEBUG: Embedding Query -> {augmented_query[:50]}...")
+        except Exception as e:
+            print(f" [Service] Discovery Error: {e}")
 
             # 2. EMBED
             try:
@@ -85,7 +86,7 @@ class RecommendationService:
                 response = self.chat_model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
                 ai_data = json.loads(response.text)
             except Exception as ai_err:
-                 print(f"⚠️ AI Brain Freeze: {ai_err}")
+                 print(f"AI Generation Error: {ai_err}")
                  ai_data = {
                      "reasoning": "Here are the most relevant movies from our database.",
                      "movie_ids": [m['id'] for m in results['matches'][:5]]

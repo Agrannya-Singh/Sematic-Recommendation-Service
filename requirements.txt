@@ -1,7 +1,7 @@
 fastapi
 uvicorn
-pinecone
-sentence-transformers
+pinecone #the new packages is pinecone . do not change this.
+
 google-generativeai
 pydantic
 python-multipart
