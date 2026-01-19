@@ -8,8 +8,13 @@ import sqlite3
 from typing import List, Optional
 import traceback 
 import httpx
+import logging
 import asyncio
 from app.database import secure_poster_url
+
+# --- LOGGING CONFIGURATION ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # --- APP CONFIGURATION ---
 app = FastAPI(title="ScreenScout Intelligence Engine", version="PRODUCTION")
@@ -33,23 +38,23 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "movies.db")
 
 # --- SERVICE INITIALIZATION ---
 if not PINECONE_KEY:
-    print("CRITICAL: PINECONE_KEY not found in Environment Variables!")
+    logger.critical("PINECONE_KEY not found in Environment Variables!")
 if not GEMINI_KEY:
-    print("CRITICAL: GEMINI_KEY not found in Environment Variables!")
+    logger.critical("GEMINI_KEY not found in Environment Variables!")
 
 try:
     if PINECONE_KEY:
         pc = Pinecone(api_key=PINECONE_KEY)
         index = pc.Index("screenscout-google-v1") 
-        print("Connected to Pinecone.")
+        logger.info("Connected to Pinecone.")
     
     if GEMINI_KEY:
         genai.configure(api_key=GEMINI_KEY)
         chat_model = genai.GenerativeModel('gemini-1.5-flash')
-        print("Connected to Gemini.")
+        logger.info("Connected to Gemini.")
 
 except Exception as e:
-    print(f"Startup Error: {e}")
+    logger.error(f"Startup Error: {e}")
 
 # --- DATA MODELS ---
 class RecommendationRequest(BaseModel):
@@ -68,7 +73,7 @@ def get_titles_from_ids(movie_ids: List[str]):
             cursor = conn.execute(query, movie_ids)
             return [row[0] for row in cursor.fetchall()]
     except Exception as e:
-        print(f"SQLite Error: {e}")
+        logger.error(f"SQLite Error: {e}")
         return []
 
 async def fetch_omdb_metadata(client: httpx.AsyncClient, title: str) -> dict:
@@ -88,7 +93,7 @@ async def fetch_omdb_metadata(client: httpx.AsyncClient, title: str) -> dict:
                         "rating": data.get("imdbRating")
                     }
     except Exception as e:
-        print(f"OMDB Error for '{title}': {e}")
+        logger.warning(f"OMDB Error for '{title}': {e}")
     return {}
 
 # --- ENDPOINTS ---
@@ -150,7 +155,7 @@ async def get_movies(page: int = Query(1, ge=1), limit: int = Query(1000, ge=1, 
             }
         }
     except Exception as e:
-        print(f"DB Error: {e}")
+        logger.error(f"DB Error: {e}")
         # traceback.print_exc() # detailed logs if needed
         raise HTTPException(status_code=500, detail="Database Read Error")
 
@@ -161,7 +166,7 @@ async def recommend_movies(req: RecommendationRequest):
         selected_titles = get_titles_from_ids(req.selected_movie_ids)
         augmented_query = f"Movies similar to {', '.join(selected_titles)}. Context: {req.query}" if selected_titles else req.query
 
-        print(f"DEBUG: Embedding Query with 004 -> {augmented_query[:50]}...")
+        logger.debug(f"Embedding Query with 004 -> {augmented_query[:50]}...")
 
         # 2. EMBED (STRICTLY MODEL 004)
         try:
@@ -236,7 +241,7 @@ async def recommend_movies(req: RecommendationRequest):
             import json
             ai_data = json.loads(response.text)
         except Exception as ai_err:
-             print(f"AI Generation Error: {ai_err}")
+             logger.error(f"AI Generation Error: {ai_err}")
              # Graceful Fallback
              ai_data = {
                  "movie_ids": [m['id'] for m in candidates[:10]],

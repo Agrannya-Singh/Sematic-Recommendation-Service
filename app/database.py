@@ -26,7 +26,8 @@ def get_titles_from_ids(movie_ids: List[str]):
             cursor = conn.execute(query, movie_ids)
             return [row[0] for row in cursor.fetchall()]
     except Exception as e:
-        print(f"SQLite Error: {e}")
+        import logging
+        logging.getLogger(__name__).error(f"SQLite Error: {e}")
         return []
 
 def secure_poster_url(m: dict) -> dict:

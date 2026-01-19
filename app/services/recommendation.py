@@ -5,6 +5,9 @@ import google.generativeai as genai
 from app.config import PINECONE_KEY, GEMINI_KEY
 from app.database import get_titles_from_ids, secure_poster_url
 from app.schemas import RecommendationRequest
+import logging
+
+logger = logging.getLogger(__name__)
 
 class RecommendationService:
     def __init__(self):
@@ -18,22 +21,21 @@ class RecommendationService:
             if PINECONE_KEY:
                 self.pc = Pinecone(api_key=PINECONE_KEY)
                 self.index = self.pc.Index("screenscout-google-v1") 
-                print(" [Service] Connected to Pinecone.")
+                logger.info("[Service] Connected to Pinecone.")
             
             if GEMINI_KEY:
                 genai.configure(api_key=GEMINI_KEY)
                 self.chat_model = genai.GenerativeModel('gemini-1.5-flash')
-                print(" [Service] Connected to Gemini.")
+                logger.info("[Service] Connected to Gemini.")
         except Exception as e:
-            print(f" [Service] Discovery Error: {e}")
+            logger.error(f"[Service] Discovery Error: {e}")
 
     async def generate_recommendations(self, req: RecommendationRequest):
         try:
             # 1. SETUP
             selected_titles = get_titles_from_ids(req.selected_movie_ids)
             augmented_query = f"Movies similar to {', '.join(selected_titles)}. Context: {req.query}" if selected_titles else req.query
-        except Exception as e:
-            print(f" [Service] Discovery Error: {e}")
+            logger.debug(f"[DEBUG] Embedding Query -> {augmented_query[:50]}...")
 
             # 2. EMBED
             try:
@@ -86,7 +88,7 @@ class RecommendationService:
                 response = self.chat_model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
                 ai_data = json.loads(response.text)
             except Exception as ai_err:
-                 print(f"AI Generation Error: {ai_err}")
+                 logger.error(f"AI Generation Error: {ai_err}")
                  ai_data = {
                      "reasoning": "Here are the most relevant movies from our database.",
                      "movie_ids": [m['id'] for m in results['matches'][:5]]

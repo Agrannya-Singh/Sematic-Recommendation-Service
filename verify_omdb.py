@@ -14,12 +14,12 @@ def verify_omdb_key(api_key, title="Inception"):
                 print("Response Data (Truncated):")
                 print(json.dumps(data, indent=2)[:500] + "...")
                 if data.get("Response") == "True":
-                    print("\nSUCCESS: OMDB API key is valid and returning data.")
+                    print("\n[INFO] OMDB API key verification successful.")
                     return True
                 else:
-                    print(f"\nFAILURE: OMDB returned error: {data.get('Error')}")
+                    print(f"\n[ERROR] OMDB verification failed: {data.get('Error')}")
             else:
-                print(f"\nFAILURE: API returned status code {status_code}")
+                print(f"\n[ERROR] API returned non-200 status code: {status_code}")
     except Exception as e:
         print(f"\nERROR: {e}")
     return False
