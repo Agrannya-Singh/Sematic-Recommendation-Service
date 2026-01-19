@@ -26,7 +26,7 @@ class RecommendationService:
             if GEMINI_KEY:
                 genai.configure(api_key=GEMINI_KEY)
                 self.chat_model = genai.GenerativeModel('gemini-1.5-flash')
-                logger.info("[Service] Connected to Gemini.")
+                logger.info("[Service] Connected to Gemini (1.5-flash).")
         except Exception as e:
             logger.error(f"[Service] Discovery Error: {e}")
 

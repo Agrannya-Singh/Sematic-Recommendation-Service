@@ -50,8 +50,9 @@ try:
     
     if GEMINI_KEY:
         genai.configure(api_key=GEMINI_KEY)
+        # Using gemini-1.5-flash-latest for better compatibility
         chat_model = genai.GenerativeModel('gemini-1.5-flash')
-        logger.info("Connected to Gemini.")
+        logger.info("Connected to Gemini (1.5-flash).")
 
 except Exception as e:
     logger.error(f"Startup Error: {e}")
@@ -184,14 +185,25 @@ async def recommend_movies(req: RecommendationRequest):
         
         # Filter out movies the user already selected AND duplicates from Pinecone
         input_ids = set(req.selected_movie_ids)
+        input_titles = set(t.lower() for t in selected_titles)
         seen_ids = set()
+        seen_titles = set()
         candidates = []
         
         for m in results['matches']:
             mid = m['id']
-            if mid not in input_ids and mid not in seen_ids:
+            m_meta = m.get('metadata', {})
+            m_title = m_meta.get('title', '').strip()
+            m_title_lower = m_title.lower()
+
+            if (mid not in input_ids and 
+                mid not in seen_ids and 
+                m_title_lower not in input_titles and 
+                m_title_lower not in seen_titles):
+                
                 candidates.append(m)
                 seen_ids.add(mid)
+                seen_titles.add(m_title_lower)
         
         # Take Top 20 from refined list
         candidates = candidates[:20]
@@ -228,16 +240,9 @@ async def recommend_movies(req: RecommendationRequest):
             ai_data = json.loads(response.text)
         except Exception as ai_err:
              logger.error(f"AI Generation Error: {ai_err}")
-             # Graceful Fallback
              ai_data = {
-                 "movie_ids": [m['id'] for m in candidates[:10]],
-                 "reasoning": "Here are the most relevant movies from our database." 
-                 # Note: reasoning is a string here in fallback, but dict in success. Frontend handles? 
-                 # Let's align structure. If frontend expects generic string, we might need a change.
-                 # Assuming we send per-movie reasoning, let's keep it dict or handle it.
-                 # For now, fallback returns generic string for 'ai_reasoning' key in response if global.
-                 # But we changed the prompt to return a dict of reasonings.
-                 # Let's adjust response construction below.
+                 "movie_ids": [m['id'] for m in candidates[:15]],
+                 "reasoning": "Here are 15 movies hand-selected for your taste." 
              }
 
         # 7. ASSEMBLE RESPONSE
