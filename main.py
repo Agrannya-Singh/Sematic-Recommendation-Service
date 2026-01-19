@@ -83,12 +83,16 @@ def get_movies(page: int = Query(1, ge=1), limit: int = Query(24, ge=1, le=100))
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute("SELECT * FROM movies ORDER BY score DESC LIMIT ? OFFSET ?", (limit, offset))
+            cursor = conn.execute("SELECT * FROM movies ORDER BY vote_average DESC LIMIT ? OFFSET ?", (limit, offset))
             rows = cursor.fetchall()
             
             results = []
             for row in rows:
                 m = dict(row)
+                # Map DB column 'vote_average' to API field 'score'
+                if 'vote_average' in m:
+                    m['score'] = m['vote_average']
+                
                 # Secure Poster Handling
                 if m['poster_path'] and str(m['poster_path']).lower() != 'nan':
                     m['poster_url'] = f"https://image.tmdb.org/t/p/w500{m['poster_path']}"

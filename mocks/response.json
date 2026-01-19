@@ -1,0 +1,19 @@
+{
+    "ai_reasoning": "Based on your interest in sci-fi and space exploration, I've selected a mix of classic and modern films that feature aliens and deep space travel.",
+    "movies": [
+        {
+            "id": "157336",
+            "title": "Interstellar",
+            "overview": "The adventures of a group of explorers who make use of a newly discovered wormhole via which to surpass the limitations on human space travel and conquer the vast distances involved in an interstellar voyage.",
+            "poster_url": "https://image.tmdb.org/t/p/w500/gEU2QniL6C8zEfGW40BwwLfTVF.jpg",
+            "score": 0.85
+        },
+        {
+            "id": "603",
+            "title": "The Matrix",
+            "overview": "Set in the 22nd century, The Matrix tells the story of a computer hacker who joins a group of underground insurgents fighting the vast and powerful computers who now rule the earth.",
+            "poster_url": "https://image.tmdb.org/t/p/w500/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg",
+            "score": 0.82
+        }
+    ]
+}

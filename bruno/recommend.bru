@@ -1,0 +1,26 @@
+meta {
+  name: AI Recommendation
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/recommend
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "query": "I want a funny movie from the 90s",
+    "selected_movie_ids": []
+  }
+}
+
+vars:pre-request {
+  baseUrl: http://localhost:8000
+}
