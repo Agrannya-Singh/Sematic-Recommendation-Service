@@ -1,0 +1,81 @@
+# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
+# More GitHub Actions for Azure: https://github.com/Azure/actions
+
+name: Build and deploy Python app to Azure Web App - sreenscount-rag
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # Required for actions/checkout
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python version
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 🛠️ Validation Build
+      # We install dependencies here to verify requirements.txt is valid, 
+      # but we DO NOT include this 'antenv' in the deployment to save space.
+      # Azure (Oryx) will reinstall them on the server.
+      - name: Validate dependencies
+        run: |
+          python -m venv antenv
+          source antenv/bin/activate
+          pip install -r requirements.txt
+
+      # 📦 Optimized Artifact Upload
+      # EXCLUDING .git, .github, and caches drastically reduces the zip size,
+      # fixing the "Zip Deploy failed" error.
+      - name: Upload artifact for deployment jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-app
+          path: |
+            .
+            !antenv/
+            !venv/
+            !.git/
+            !.github/
+            !__pycache__/
+            !*.pyc
+            !tests/
+            !*.md
+            !Dockerfile
+            !requirements_docker.txt
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      id-token: write # Required for requesting the JWT
+      contents: read # Required for actions/checkout
+
+    steps:
+      - name: Download artifact from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: python-app
+      
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_4665AD878CE2492FA3D57F189BCFC4F6 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_498AF0D973544E28A07F21A8B6E7E969 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6525C3CA7A054FADA417BF674DEA8E26 }}
+
+      - name: 'Deploy to Azure Web App'
+        uses: azure/webapps-deploy@v3
+        id: deploy-to-webapp
+        with:
+          app-name: 'sreenscount-rag'
+          slot-name: 'Production'
