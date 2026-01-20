@@ -52,7 +52,7 @@ try:
         genai.configure(api_key=GEMINI_KEY)
         # Using gemini-1.5-flash-latest for better compatibility
         chat_model = genai.GenerativeModel('gemini-2.0-flash')
-        logger.info("Connected to Gemini (1.5-flash).")
+        logger.info("Connected to Gemini (2.0-flash).")
 
 except Exception as e:
     logger.error(f"Startup Error: {e}")

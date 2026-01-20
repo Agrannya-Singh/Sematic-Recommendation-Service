@@ -73,7 +73,7 @@ graph TD
 
 ## API Documentation
 
-### Base URL: `https://semantic-recommendation-service.onrender.com`
+### Base URL: `https://sreenscount-rag-bmhxbshag6gdfeb8.southeastasia-01.azurewebsites.net`
 
 ### **1. Semantic Recommendation (RAG)**
 
