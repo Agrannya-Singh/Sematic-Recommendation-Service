@@ -173,4 +173,4 @@ API tests are available via **Bruno**.
 ---
 
 ##  License
-GPU Open License © 2026 Agrannya Singh
+GPL Open License © 2026 Agrannya Singh | You may fork and use this code in your own projects. howeever then your codebase must be also be copy left complaint i.e open sourced. modification of this codebase is  permitted.
